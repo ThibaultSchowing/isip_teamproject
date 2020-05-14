@@ -16,3 +16,53 @@
         # utils.show(self.reverse_pattern_arr)
 
 
+# With openCV, compare the templates and images with different and take the best
+        #  -> the center of the template will be the center of the cochlea.
+
+        meth = 'cv2.TM_SQDIFF'  # it's the only that gives acceptable results
+
+        # left and right ear template
+        template_list = [cv2.Canny(self.pattern_arr.astype(np.uint8), 5, 5),
+                         cv2.Canny(self.reverse_pattern_arr.astype(np.uint8), 5, 5)]
+
+        # Store the scores and locations for each template / methods
+        score_loc = []
+        center_list = []
+        results_list = []
+        top_left_list = []
+        bottom_right_list = []
+
+        for template in template_list:
+            w, h = template.shape[::-1]
+
+            img = im.copy()
+            method = eval(meth)
+
+            # Apply template Matching
+            res = cv2.matchTemplate(img, template, method)
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+            print("debug: ", min_val, " - ", max_val)
+
+            top_left = min_loc  # With this method, the best result is the smallest
+            bottom_right = (top_left[0] + w, top_left[1] + h)
+            center = ((top_left[0] + bottom_right[0]) // 2, (top_left[1] + bottom_right[1]) // 2)
+
+            # Append results of both template
+            top_left_list.append(top_left)
+            bottom_right_list.append(bottom_right)
+            results_list.append(res)
+            score_loc.append(min_val)
+            center_list.append(((top_left[0] + bottom_right[0]) // 2, (top_left[1] + bottom_right[1]) // 2))
+
+        img = im.copy()
+        idx = score_loc.index(min(score_loc))
+        print(idx)
+        cv2.circle(img, center_list[idx], 20, 150, 9)
+        cv2.rectangle(img, top_left_list[idx], bottom_right_list[idx], 255, 2)
+        plt.subplot(121), plt.imshow(results_list[idx], cmap='gray')
+        plt.title('Matching Result'), plt.xticks([]), plt.yticks([])
+        plt.subplot(122), plt.imshow(img, cmap='gray')
+        plt.title('Detected Point'), plt.xticks([]), plt.yticks([])
+        plt.suptitle(meth + self.prePath)
+
+        plt.show()
