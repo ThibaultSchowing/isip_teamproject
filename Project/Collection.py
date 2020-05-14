@@ -10,12 +10,14 @@ class Collection:
 
     # Constructor / instances attributes
     # pairs : list of pairs tuples
-    def __init__(self, pairs):
+    # pattern : path to the pattern file (black white image of the cochlea form)
+    def __init__(self, pairs, pattern):
         self.CTpairs = []
         for pair in pairs:
-            p = CTscanPair(pair)
-            self.CTpairs.append(CTscanPair(pair))
+            self.CTpairs.append(CTscanPair(pair, pattern))
         self.size = len(self.CTpairs)
 
+    # Returns the list of all pairs of CTscan object
     def getPairs(self):
         return self.CTpairs
+
