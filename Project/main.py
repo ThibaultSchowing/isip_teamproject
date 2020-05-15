@@ -1,10 +1,5 @@
-from Collection import Collection
 import utils
-from skimage import io
-from skimage.color import rgb2gray
-import numpy as np
-from PIL import Image
-from matplotlib import pyplot as plt
+from Collection import Collection
 
 print("ISIP - Team project 2020")
 
@@ -12,8 +7,9 @@ print("ISIP - Team project 2020")
 data_path = "./DATA"
 
 # Import images by pre-post pair / function in utils.py
-imgs_pair_paths = utils.get_img_pairs_paths(data_path) # list of tuple / pairs of images pre-post
-pattern_path = ["./pattern/pattern.png", "./pattern/reversepattern.png", "./pattern/pattern.png", "./pattern/reversepattern.png"]
+imgs_pair_paths = utils.get_img_pairs_paths(data_path)  # list of tuple / pairs of images pre-post
+# pattern_path = ["./pattern/pattern.png", "./pattern/reversepattern.png", "./pattern/pattern.png", "./pattern/reversepattern.png"]
+pattern_path = "./pattern/round2.png"
 print(imgs_pair_paths)
 
 # List of all images, not by pair
@@ -25,6 +21,6 @@ pairs = c.getPairs()
 
 ############
 for p in pairs:
-    im = p.getSpiralCenter()
+    im = p.getCochleaCenter()
     print(im)
 
