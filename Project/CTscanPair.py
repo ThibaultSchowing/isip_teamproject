@@ -1,6 +1,5 @@
 import io
 import ntpath
-import os
 
 import cv2
 import imutils
@@ -17,29 +16,44 @@ class CTscanPair:
     # Constructor / instances attributes
     #   Pair: tuple with two paths to the preop and postop CT scan images.
     def __init__(self, pair, patternpath):
+        ###########################################
+        # Basic features initialization
+        ###########################################
         self.prePath = pair[1]
         self.postPath = pair[0]
         self.patternPath = patternpath
         self.pattern_arr = []
 
+        # Preop picture filename
         head, tail = ntpath.split(self.prePath)
         self.preBasename = tail
-
+        # Postop picture filename
         head, tail = ntpath.split(self.postPath)
         self.postBasename = tail
 
+        # Open the files
+        # https://pillow.readthedocs.io/en/3.1.x/reference/Image.html#PIL.Image.Image.convert
+
+        # Pre-surgery picture
         with open(self.prePath, 'rb') as f:
             self.preop_arr = array(Image.open(io.BytesIO(f.read())).convert('L'))
 
+        # Post-surgery picture
         with open(self.postPath, 'rb') as g:
             self.postop_arr = array(Image.open(io.BytesIO(g.read())).convert('L'))
 
-        # List of pattern (orientation of inner ear), binary 0-255. Bitwisenot is here to reverse the wrongly made picture
+        # Pattern (circle)
         with open(self.patternPath, 'rb') as p:
             self.pattern = array(Image.open(io.BytesIO(p.read())).convert('L'))
-            # self.pattern_arr.append(cv2.bitwise_not(array(Image.open(io.BytesIO(p.read())).convert('L'))))
 
-        self.cochlea_center = self.setSpiralCenter(True, False)
+        # Base image preop but colored / is set during cochlea center calculation
+        self.preImgRGB = None
+
+        ###########################################
+        # Complex analysis on init
+        ###########################################
+
+        self.cochlea_center = self.setCochleaCenter(True, False, True)
 
     def getPreImg(self):
         return self.preop_arr
@@ -50,11 +64,11 @@ class CTscanPair:
     def getCochleaCenter(self):
         return self.cochlea_center
 
-    # Idea: use template matching (CV2) or normalized cross correlation to find the/a spiral in the picture.
-    def setSpiralCenter(self, save_file=False, verbose=False):
+    # Called in constructor
+    def setCochleaCenter(self, save_file=False, verbose=False, show_plot=False):
         '''
         @:param self:
-        @:param save_file: if True, save the scan image with the marked center
+        @:param save_file: if True, save the scan image with the marked center + with colored area
         :return: Detected center point of the cochlea
         '''
         # Method used for cv2.matchTemplate -> cv2.TM_CCOEFF
@@ -123,21 +137,80 @@ class CTscanPair:
         (startX, startY) = (int(maxLoc[0] * r), int(maxLoc[1] * r))
         (endX, endY) = (int((maxLoc[0] + tW) * r), int((maxLoc[1] + tH) * r))
         # draw a bounding box around the detected result and display the image
-        cv2.rectangle(image, (startX, startY), (endX, endY), (0, 0, 255), 2)
+        cv2.rectangle(image, (startX + 100, startY + 100), (endX - 100, endY - 100), (0, 0, 255), 2)
         cochlea_center = ((startX + endX) // 2, (startY + endY) // 2)
         cv2.circle(image, cochlea_center, 8, 0, 2)
 
         if verbose:
             title = "Best match for " + self.preBasename
             utils.show(image, title)
-            print("Scale: ", scale)
 
         # Saving the image
         if save_file:
-            path = './GEN_IMG/'
+            path2 = './GEN_IMG/'
             filename = "center_" + self.preBasename
-            os.path.join(path, filename)
-            cv2.imwrite(os.path.join(path, filename), image)
+            cv2.imwrite(os.path.join(path2, filename), image)
 
+        #################################################################
+        # Create picture with colored center and cochlea
+        #################################################################
+        self.preImgRGB = cv2.cvtColor(self.preop_arr, cv2.COLOR_GRAY2RGB)
+        cv2.circle(self.preImgRGB, cochlea_center, 8, [0, 100, 150], 2)
+
+        # Create masks to extract only the cochleal area
+        mask = np.zeros((self.preImgRGB.shape[0], self.preImgRGB.shape[1]))
+
+        # KEEP
+        # If the wanted shape is rectangle
+        # Fairly it's useless but it's a pain in the ass to write
+        rectangle = False
+        if rectangle:
+            pad_rectangle = 50
+            mask[startY + pad_rectangle:endY - pad_rectangle, startX + pad_rectangle:endX - pad_rectangle] = 1
+
+        # Mask: circle around the center
+        radius_blue = 250
+        mask = utils.create_circular_mask(self.preImgRGB.shape[0], self.preImgRGB.shape[1], cochlea_center, radius_blue)
+
+        # Mask2: Region marked as "liquid", img_threshold had to be reversed
+        mask2 = -1 * (img_threshold - 255)
+
+        # Logical and on the two masks to obtain the region shown in blue in the picture that
+        # corresponds to the cochlea.
+        mask3 = np.logical_and(mask, mask2)
+        mask3 = cv2.cvtColor(np.float32(mask3), cv2.COLOR_GRAY2RGB)
+        background = np.int32(self.preImgRGB.copy())
+        overlay = np.where(mask3, [0, 100, 150], [0, 0, 0])
+
+        # It is important to check for the image type (float32, int8, etc)
+        # print("bck type: ", background.dtype)
+        # print("ovl type: ", overlay.dtype)
+
+        # Superpose the blue mask and the picture
+
+        img_colored = cv2.addWeighted(background, 1, overlay, 0.2, 0)
+        self.preImgRGB = img_colored.copy()
+
+        # Useful for debug
+        # utils.get_image_info(img_colored)
+
+        img_colored = img_colored.astype('uint8')
+
+        # Due to the RGB vs BGR thing, the picture here is displayed blue
+        # but saved yellow (it is in RGB for openCV but BGR for every other program in the world)
+        if show_plot:
+            utils.show(img_colored, "Colored cochlea and center")
+
+        # Saving the image
+        if save_file:
+            # Convert the image before saving
+            # Will appear blue when opened but would appear yellow if ploted
+            img_colored = cv2.cvtColor(img_colored, cv2.COLOR_RGB2BGR)
+
+            path2 = './GEN_IMG/'
+            filename = "center_colored_" + self.preBasename
+            cv2.imwrite(os.path.join(path2, filename), img_colored)
+
+        # Has set the variable self.preImgRGB to a colored preop image
         # returns the coordinates of the center
         return cochlea_center
