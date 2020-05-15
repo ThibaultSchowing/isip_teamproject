@@ -1,6 +1,6 @@
 import io
 import ntpath
-
+import os
 import cv2
 import imutils
 from PIL import Image
@@ -14,8 +14,12 @@ class CTscanPair:
     # Class attributes
 
     # Constructor / instances attributes
-    #   Pair: tuple with two paths to the preop and postop CT scan images.
     def __init__(self, pair, patternpath):
+        '''
+
+        :param pair: Tuple with two paths to the preop and postop CT scan images.
+        :param patternpath: Path to the pattern images to detect the cochlea (circle)
+        '''
         ###########################################
         # Basic features initialization
         ###########################################
@@ -53,15 +57,27 @@ class CTscanPair:
         # Complex analysis on init
         ###########################################
 
-        self.cochlea_center = self.setCochleaCenter(True, False, True)
+        self.cochlea_center = self.setCochleaCenter(True, False, False)
 
     def getPreImg(self):
+        '''
+
+        :return: Base image of the pre-surgery CT scan (without electrodes)
+        '''
         return self.preop_arr
 
     def getPostImg(self):
+        '''
+
+        :return: Base image of the post-surgery CT scan (with electrodes)
+        '''
         return self.postop_arr
 
     def getCochleaCenter(self):
+        '''
+
+        :return: Coordinates (x,y) of the cochleal center
+        '''
         return self.cochlea_center
 
     # Called in constructor
@@ -97,6 +113,10 @@ class CTscanPair:
         # Using multi scale, avoid this problem and allows to simply give one circle image as input (template)
         # The main part on this function that helped giving good results, was the preprocessing (strong blur)
         # of the preoperative image.
+
+        # A trial with Hough transform gave poor results. It was hard to score the different circles
+        # and to tune the functions. With a bit more or different pre-processing steps, Hough transform
+        # might also give satisfying results but the one we get here are satisfactory enough.
 
         (tH, tW) = template.shape[:2]
 
@@ -154,6 +174,7 @@ class CTscanPair:
         #################################################################
         # Create picture with colored center and cochlea
         #################################################################
+        # Copy of the original picture that we'll modify here
         self.preImgRGB = cv2.cvtColor(self.preop_arr, cv2.COLOR_GRAY2RGB)
         cv2.circle(self.preImgRGB, cochlea_center, 8, [0, 100, 150], 2)
 
@@ -162,7 +183,7 @@ class CTscanPair:
 
         # KEEP
         # If the wanted shape is rectangle
-        # Fairly it's useless but it's a pain in the ass to write
+        # Fairly it's useless but it's a pain in the ass to write so I keep it there
         rectangle = False
         if rectangle:
             pad_rectangle = 50
@@ -181,6 +202,10 @@ class CTscanPair:
         mask3 = cv2.cvtColor(np.float32(mask3), cv2.COLOR_GRAY2RGB)
         background = np.int32(self.preImgRGB.copy())
         overlay = np.where(mask3, [0, 100, 150], [0, 0, 0])
+
+        # In overlay, it would be great to remove the small blue parts outside the cochlea
+        # An easy way to do this would be to use an algorithm that detect islands of connected 1's
+        # -> not enough time to do this because it's the exams soon sorry.
 
         # It is important to check for the image type (float32, int8, etc)
         # print("bck type: ", background.dtype)
