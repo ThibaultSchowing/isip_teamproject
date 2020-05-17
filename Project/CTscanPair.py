@@ -1,11 +1,14 @@
 import io
 import ntpath
 import os
+import time
+
 import cv2
 import imutils
 from PIL import Image
 from pylab import *
 
+import config
 import utils
 
 
@@ -23,6 +26,7 @@ class CTscanPair:
         ###########################################
         # Basic features initialization
         ###########################################
+        start = time.time()
         self.prePath = pair[1]
         self.postPath = pair[0]
         self.patternPath = patternpath
@@ -50,14 +54,20 @@ class CTscanPair:
         with open(self.patternPath, 'rb') as p:
             self.pattern = array(Image.open(io.BytesIO(p.read())).convert('L'))
 
-        # Base image preop but colored / is set during cochlea center calculation
+        # Base image preop but colored / is set during cochlea center calculation bellow
         self.preImgRGB = None
 
         ###########################################
         # Complex analysis on init
         ###########################################
 
-        self.cochlea_center = self.setCochleaCenter(True, False, False)
+        # Could have been made with Hough Transform but template matching is more efficient and adaptive.
+        self.cochlea_center = self.setCochleaCenterTemplateMatching()
+
+        end = time.time()
+        t = end - start
+        message = " Done for pair " + self.preBasename[:-7] + " in " + str(round(t, 3)) + " seconds. "
+        print(message)
 
     def getPreImg(self):
         '''
@@ -80,32 +90,98 @@ class CTscanPair:
         '''
         return self.cochlea_center
 
-    # Called in constructor
-    def setCochleaCenter(self, save_file=False, verbose=False, show_plot=False):
+    # NOT USED
+    def setCochleaCenterHoughTransform(self):
         '''
-        @:param self:
-        @:param save_file: if True, save the scan image with the marked center + with colored area
+        Circle detection with Hough Transform
+        This method has been tried but getting circles was not successful enough.
+        This function is here for academic purpose but does not serve at all to the project.
+        :return: 8 (because why not)
+        '''
+        # Noise reduction
+        # Strong blur, very efficient (65, 65)
+        img_blur = cv2.blur(self.preop_arr, (config.preprocessing["blur"],
+                                             config.preprocessing["blur"]))
+
+        # Apply threshold for grey values
+        # Threshold chosen according to image histogram showing peak between 40 and 110 for grey
+        # values corresponding to liquid areas. (between 40 and 110)
+        hough_gray = np.where(np.logical_or(img_blur > config.preprocessing["thr_up_gray"],
+                                            img_blur < config.preprocessing["thr_low_gray"]),
+                              255,
+                              0).astype(np.uint8)
+
+        # Canny edge detection
+        hough_gray = cv2.Canny(hough_gray,
+                               config.hough_circles["canny_thr1"],
+                               config.hough_circles["canny_thr2"])
+
+        # copy of original image
+        output = self.preop_arr.copy()
+        image = output.copy()
+
+        # detect circles in the image
+        circles = cv2.HoughCircles(hough_gray,
+                                   config.hough_circles["method"],
+                                   config.hough_circles["accumulator_value"],
+                                   config.hough_circles["min_dist"])
+
+        # ensure at least some circles were found
+        if circles is not None:
+            # convert the (x, y) coordinates and radius of the circles to integers
+            circles = np.round(circles[0, :]).astype("int")
+            # loop over the (x, y) coordinates and radius of the circles
+            for (x, y, r) in circles:
+                # draw the circle in the output image, then draw a rectangle
+                # corresponding to the center of the circle
+                cv2.circle(output, (x, y), r, (0, 255, 0), 4)
+                cv2.rectangle(output, (x - 5, y - 5), (x + 5, y + 5), (0, 128, 255), -1)
+            # show the output image
+            cv2.imshow("output hough transform", np.hstack([image, output]))
+            cv2.waitKey(0)
+        else:
+            if config.hough_circles["verbose"]:
+                print("No circle deteted")
+
+        return 8
+
+    def setCochleaCenterTemplateMatching(self,
+                                         save_file=config.pattern_matching["save_file"],
+                                         verbose=config.pattern_matching["verbose"],
+                                         show_plot=config.pattern_matching["show_plot"]):
+        '''
+
+        :param save_file:
+        :param verbose:
+        :param show_plot:
         :return: Detected center point of the cochlea
         '''
         # Method used for cv2.matchTemplate -> cv2.TM_CCOEFF
         # Explanations and formulas: https://docs.opencv.org/master/df/dfb/group__imgproc__object.html
 
         # Noise reduction
-        # Strong blur, very efficient!
-        img_blur = cv2.blur(self.preop_arr, (65, 65))
+        # Strong blur, very efficient (65, 65)
+        img_blur = cv2.blur(self.preop_arr, (config.preprocessing["blur"],
+                                             config.preprocessing["blur"]))
 
         # Apply threshold for grey values
         # Threshold chosen according to image histogram showing peak between 40 and 110 for grey
-        # values corresponding to liquid areas.
-        img_threshold = np.where(np.logical_or(img_blur > 110, img_blur < 40), 255, 0).astype(np.uint8)
+        # values corresponding to liquid areas. (between 40 and 110)
+        img_threshold = np.where(np.logical_or(img_blur > config.preprocessing["thr_up_gray"],
+                                               img_blur < config.preprocessing["thr_low_gray"]),
+                                 255,
+                                 0).astype(np.uint8)
 
         # Preprocess pattern / no need, it's a simple circle
-        # It's an array but only the first value is used (might be useful later)
         template = self.pattern
 
         # Trying multi scale template matching
         # DISCLAIMER
         # Code adapted from: https://www.pyimagesearch.com/2015/01/26/multi-scale-template-matching-using-python-opencv/
+
+        # Important documentation:
+        # https://docs.opencv.org/2.4/modules/imgproc/doc/feature_detection.html?highlight=canny#canny
+        # https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_template_matching/py_template_matching.html
 
         # The best way to detect the spiral is to detect its circle components
         # With one circle, we might encounter the problem that a CT scan image
@@ -125,7 +201,7 @@ class CTscanPair:
         found = None
         visualize = verbose
         # loop over the scales of the image
-        for scale in np.linspace(0.2, 1.0, 20)[::-1]:
+        for scale in config.pattern_matching["image_scaling"]:
             # resize the image according to the scale, and keep track
             # of the ratio of the resizing
             resized = imutils.resize(gray, width=int(gray.shape[1] * scale))
@@ -136,8 +212,15 @@ class CTscanPair:
                 break
             # detect edges in the resized, grayscale image and apply template
             # matching to find the template in the image
-            edged = cv2.Canny(resized, 50, 200)
-            result = cv2.matchTemplate(edged, template, cv2.TM_CCOEFF)
+            # !!!! Parameters from config.py !!!!!
+            edged = cv2.Canny(resized,
+                              config.pattern_matching["canny_thr1"],
+                              config.pattern_matching["canny_thr2"])
+
+            result = cv2.matchTemplate(edged,
+                                       template,
+                                       config.pattern_matching["pat_match_method"])
+
             (_, maxVal, _, maxLoc) = cv2.minMaxLoc(result)
             # check to see if the iteration should be visualized
             if visualize:
@@ -170,6 +253,9 @@ class CTscanPair:
             path2 = './GEN_IMG/'
             filename = "center_" + self.preBasename
             cv2.imwrite(os.path.join(path2, filename), image)
+
+            filenamep = "preprocessed_" + self.preBasename
+            cv2.imwrite(os.path.join(path2, filenamep), img_threshold)
 
         #################################################################
         # Create picture with colored center and cochlea

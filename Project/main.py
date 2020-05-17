@@ -17,10 +17,8 @@ print(imgs_pair_paths)
 
 # Create a collection with all the pairs of picture
 c = Collection(imgs_pair_paths, pattern_path)
-pairs = c.getPairs()
 
 ############
-for p in pairs:
+for p in c.getPairs():
     im = p.getCochleaCenter()
     print(im)
-
