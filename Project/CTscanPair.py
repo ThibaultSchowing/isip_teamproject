@@ -1,7 +1,5 @@
 import io
 import ntpath
-import os
-import time
 
 import cv2
 import imutils
@@ -18,11 +16,11 @@ class CTscanPair:
 
     # Constructor / instances attributes
     def __init__(self, pair, patternpath):
-        '''
+        """
 
         :param pair: Tuple with two paths to the preop and postop CT scan images.
         :param patternpath: Path to the pattern images to detect the cochlea (circle)
-        '''
+        """
         ###########################################
         # Basic features initialization
         ###########################################
@@ -70,51 +68,51 @@ class CTscanPair:
         print(message)
 
     def getPreImg(self):
-        '''
+        """
 
         :return: Base image of the pre-surgery CT scan (without electrodes)
-        '''
+        """
         return self.preop_arr
 
     def getPostImg(self):
-        '''
+        """
 
         :return: Base image of the post-surgery CT scan (with electrodes)
-        '''
+        """
         return self.postop_arr
 
     def getCochleaCenter(self):
-        '''
+        """
 
         :return: Coordinates (x,y) of the cochleal center
-        '''
+        """
         return self.cochlea_center
 
-    # NOT USED
+    # HOUGH IS NOT USED
     def setCochleaCenterHoughTransform(self):
-        '''
+        """
         Circle detection with Hough Transform
         This method has been tried but getting circles was not successful enough.
         This function is here for academic purpose but does not serve at all to the project.
         :return: 8 (because why not)
-        '''
+        """
         # Noise reduction
         # Strong blur, very efficient (65, 65)
-        img_blur = cv2.blur(self.preop_arr, (config.preprocessing["blur"],
-                                             config.preprocessing["blur"]))
+        img_blur = cv2.blur(self.preop_arr, (config.preprocessing_1["blur"],
+                                             config.preprocessing_1["blur"]))
 
         # Apply threshold for grey values
         # Threshold chosen according to image histogram showing peak between 40 and 110 for grey
         # values corresponding to liquid areas. (between 40 and 110)
-        hough_gray = np.where(np.logical_or(img_blur > config.preprocessing["thr_up_gray"],
-                                            img_blur < config.preprocessing["thr_low_gray"]),
+        hough_gray = np.where(np.logical_or(img_blur > config.preprocessing_1["thr_up_gray"],
+                                            img_blur < config.preprocessing_1["thr_low_gray"]),
                               255,
                               0).astype(np.uint8)
 
         # Canny edge detection
         hough_gray = cv2.Canny(hough_gray,
-                               config.hough_circles["canny_thr1"],
-                               config.hough_circles["canny_thr2"])
+                               config.hough_circles_cochlea_center["canny_thr1"],
+                               config.hough_circles_cochlea_center["canny_thr2"])
 
         # copy of original image
         output = self.preop_arr.copy()
@@ -122,9 +120,9 @@ class CTscanPair:
 
         # detect circles in the image
         circles = cv2.HoughCircles(hough_gray,
-                                   config.hough_circles["method"],
-                                   config.hough_circles["accumulator_value"],
-                                   config.hough_circles["min_dist"])
+                                   config.hough_circles_cochlea_center["method"],
+                                   config.hough_circles_cochlea_center["accumulator_value"],
+                                   config.hough_circles_cochlea_center["min_dist"])
 
         # ensure at least some circles were found
         if circles is not None:
@@ -140,35 +138,35 @@ class CTscanPair:
             cv2.imshow("output hough transform", np.hstack([image, output]))
             cv2.waitKey(0)
         else:
-            if config.hough_circles["verbose"]:
+            if config.hough_circles_cochlea_center["verbose"]:
                 print("No circle deteted")
 
         return 8
 
     def setCochleaCenterTemplateMatching(self,
-                                         save_file=config.pattern_matching["save_file"],
-                                         verbose=config.pattern_matching["verbose"],
-                                         show_plot=config.pattern_matching["show_plot"]):
-        '''
+                                         save_file=config.pattern_matching_cochlea_center["save_file"],
+                                         verbose=config.pattern_matching_cochlea_center["verbose"],
+                                         show_plot=config.pattern_matching_cochlea_center["show_plot"]):
+        """
 
         :param save_file:
         :param verbose:
         :param show_plot:
         :return: Detected center point of the cochlea
-        '''
+        """
         # Method used for cv2.matchTemplate -> cv2.TM_CCOEFF
         # Explanations and formulas: https://docs.opencv.org/master/df/dfb/group__imgproc__object.html
 
         # Noise reduction
         # Strong blur, very efficient (65, 65)
-        img_blur = cv2.blur(self.preop_arr, (config.preprocessing["blur"],
-                                             config.preprocessing["blur"]))
+        img_blur = cv2.blur(self.preop_arr, (config.pattern_matching_cochlea_center["blur"],
+                                             config.pattern_matching_cochlea_center["blur"]))
 
         # Apply threshold for grey values
         # Threshold chosen according to image histogram showing peak between 40 and 110 for grey
         # values corresponding to liquid areas. (between 40 and 110)
-        img_threshold = np.where(np.logical_or(img_blur > config.preprocessing["thr_up_gray"],
-                                               img_blur < config.preprocessing["thr_low_gray"]),
+        img_threshold = np.where(np.logical_or(img_blur > config.pattern_matching_cochlea_center["thr_up_gray"],
+                                               img_blur < config.pattern_matching_cochlea_center["thr_low_gray"]),
                                  255,
                                  0).astype(np.uint8)
 
@@ -201,7 +199,7 @@ class CTscanPair:
         found = None
         visualize = verbose
         # loop over the scales of the image
-        for scale in config.pattern_matching["image_scaling"]:
+        for scale in config.pattern_matching_cochlea_center["image_scaling"]:
             # resize the image according to the scale, and keep track
             # of the ratio of the resizing
             resized = imutils.resize(gray, width=int(gray.shape[1] * scale))
@@ -214,12 +212,12 @@ class CTscanPair:
             # matching to find the template in the image
             # !!!! Parameters from config.py !!!!!
             edged = cv2.Canny(resized,
-                              config.pattern_matching["canny_thr1"],
-                              config.pattern_matching["canny_thr2"])
+                              config.pattern_matching_cochlea_center["canny_thr1"],
+                              config.pattern_matching_cochlea_center["canny_thr2"])
 
             result = cv2.matchTemplate(edged,
                                        template,
-                                       config.pattern_matching["pat_match_method"])
+                                       config.pattern_matching_cochlea_center["pat_match_method"])
 
             (_, maxVal, _, maxLoc) = cv2.minMaxLoc(result)
             # check to see if the iteration should be visualized
@@ -325,3 +323,18 @@ class CTscanPair:
         # Has set the variable self.preImgRGB to a colored preop image
         # returns the coordinates of the center
         return cochlea_center
+
+    # TODO - this is just bullshit
+    def setElectrodesCoordinates(self):
+        electrodes = {
+            "1", (0, 0)
+        }
+        return 8
+
+    # TODO - make this mean something
+    def setElectrodesOrder(self):
+
+        return 8
+
+    # TODO - separate bright spots finder
+    # https: // stackoverflow.com / questions / 51846933 / finding - bright - spots - in -a - image - using - opencv
