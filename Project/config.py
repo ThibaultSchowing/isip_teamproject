@@ -4,7 +4,8 @@ import numpy as np
 # config for center detection with multi-scale pattern matching
 # function: setCochleaCenterTemplateMatching
 general = {
-    "data_directory": "./DATA"
+    "data_directory": "./DATA",
+    "save_imgs": "./GEN_IMG"
 }
 
 pattern_matching_cochlea_center = {
@@ -42,9 +43,11 @@ preprocessing_1 = {
 }
 
 cochlea_area = {
+    "save_file": False,
     "blur": 65,
     "thr_low_gray": 40,
     "thr_up_gray": 110,
     "mask_radius": 250,
-    "dilate_kernel": 19
+    "dilate_kernel": 25,
+    "iterations": 5
 }

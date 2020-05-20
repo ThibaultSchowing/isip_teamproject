@@ -1,5 +1,6 @@
 import io
 import ntpath
+import os
 
 import cv2
 import imutils
@@ -457,18 +458,31 @@ class CTscanPair:
         # Logical and on the two masks to obtain the region shown in blue in the picture that
         # corresponds to the cochlea. (liquid + matching radius
         mask3 = np.logical_and(mask, img_threshold)
-        utils.show(mask3, "avant")
+
+        # before = mask3.copy()
 
         # As said in the handout, the electrodes might not be exactely in the cochlea area
         # So we thicken it to have extend the borders of the mask.
 
         kernel = np.ones((19, 19), np.uint8)
-        mask3 = cv2.dilate(np.float32(mask3), kernel, iterations=1)
-        # Convert back to
-        mask3 = mask3.astype(bool)
-
+        mask3 = cv2.dilate(np.float32(mask3), kernel, iterations=config.cochlea_area["iterations"])
+        # Convert back to boolean
         # Type: <class 'numpy.ndarray'>
         # Shape: (746, 1129)
         # dType: bool
+
+        mask3 = mask3.astype(bool)
+
+        # after = mask3.copy()
+        # utils.show(np.hstack([before, after]), "Cochlea area mask before and after thickening")
+
+        # Save to report
+        # Usage:
+
+        # Saving the image
+        if config.cochlea_area["save_file"]:
+            image = np.where(mask3, self.postop_arr, 0)
+            filename = "area_mask_" + self.preBasename
+            cv2.imwrite(os.path.join(config.general["save_imgs"], filename), image)
 
         return mask3
