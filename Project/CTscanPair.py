@@ -11,6 +11,8 @@ import utils
 
 
 # BASE IMAGE ALWAYS IN NPARRAY FORMAT with values 0-255 ! (it's easier to handle)
+
+# This class contains all information related to the pair of images received (pre-surgical and post-surgical)
 class CTscanPair:
     # Class attributes
 
@@ -59,8 +61,16 @@ class CTscanPair:
         # Complex analysis on init
         ###########################################
 
-        # Could have been made with Hough Transform but template matching is more efficient and adaptive.
+        # Define a radius of reasonable location of the cochlea (see hand out: electrode might not be in)
+
+        # Has been attempted with Hough Transform but template matching is more efficient and adaptive.
         self.cochlea_center = self.setCochleaCenterTemplateMatching()
+
+        # Mask that covers the cochlea area. It is expanded a bit to be used in the electrodes detection.
+        self.cochlea_area = self.setCochleaAreaImage()
+        # self.electrodes_list = self.setElectrodesCoordinates()
+
+        self.orientation = self.setCochleaOrientation()
 
         end = time.time()
         t = end - start
@@ -274,14 +284,14 @@ class CTscanPair:
             mask[startY + pad_rectangle:endY - pad_rectangle, startX + pad_rectangle:endX - pad_rectangle] = 1
 
         # Mask: circle around the center
-        radius_blue = 250
+        radius_blue = config.pattern_matching_cochlea_center["mask_radius"]
         mask = utils.create_circular_mask(self.preImgRGB.shape[0], self.preImgRGB.shape[1], cochlea_center, radius_blue)
 
         # Mask2: Region marked as "liquid", img_threshold had to be reversed
         mask2 = -1 * (img_threshold - 255)
 
         # Logical and on the two masks to obtain the region shown in blue in the picture that
-        # corresponds to the cochlea.
+        # corresponds to the cochlea. (liquid + matching radius
         mask3 = np.logical_and(mask, mask2)
         mask3 = cv2.cvtColor(np.float32(mask3), cv2.COLOR_GRAY2RGB)
         background = np.int32(self.preImgRGB.copy())
@@ -326,9 +336,88 @@ class CTscanPair:
 
     # TODO - this is just bullshit
     def setElectrodesCoordinates(self):
-        electrodes = {
-            "1", (0, 0)
-        }
+        #
+        img = self.postop_arr.copy()
+
+        # increase contrast
+        normalizedImg = np.zeros(img.shape)
+        normalizedImg = cv2.normalize(img, normalizedImg, 0, 255, cv2.NORM_MINMAX)
+        img = normalizedImg
+
+        # global thresholding
+        ret1, th1 = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY)
+        # Otsu's thresholding
+        ret2, th2 = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        # Otsu's thresholding after Gaussian filtering
+        blur = cv2.GaussianBlur(img, (5, 5), 6)
+        ret3, th3 = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        # plot all the images and their histograms
+        images = [img, 0, th1,
+                  img, 0, th2,
+                  blur, 0, th3]
+        titles = ['Original Noisy Image', 'Histogram', 'Global Thresholding (v=127)',
+                  'Original Noisy Image', 'Histogram', "Otsu's Thresholding",
+                  'Gaussian filtered Image', 'Histogram', "Otsu's Thresholding"]
+        for i in range(3):
+            plt.subplot(3, 3, i * 3 + 1), plt.imshow(images[i * 3], 'gray')
+            plt.title(titles[i * 3]), plt.xticks([]), plt.yticks([])
+            plt.subplot(3, 3, i * 3 + 2), plt.hist(images[i * 3].ravel(), 256)
+            plt.title(titles[i * 3 + 1]), plt.xticks([]), plt.yticks([])
+            plt.subplot(3, 3, i * 3 + 3), plt.imshow(images[i * 3 + 2], 'gray')
+            plt.title(titles[i * 3 + 2]), plt.xticks([]), plt.yticks([])
+        plt.show()
+
+        # threshold
+        # utils.get_image_info(img)
+        # ret, img = cv2.threshold(img, 100, 255, cv2.THRESH_TOZERO)
+
+        # findcontours
+        # img = cv2.findContours(img, cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)[-2]
+
+        # create a CLAHE object (Arguments are optional).
+        # clahe = cv2.createCLAHE(clipLimit=0.5, tileGridSize=(4, 4))
+        # img = clahe.apply(img)
+
+        # Normalizer
+
+        # increase contrast
+        # normalizedImg = np.zeros(img.shape)
+        # normalizedImg = cv2.normalize(img, normalizedImg, 0, 255, cv2.NORM_MINMAX)
+        # img = normalizedImg
+
+        # Equalizers
+        # https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_histograms/py_histogram_equalization/py_histogram_equalization.html
+
+        # img = cv2.equalizeHist(img)
+
+        # Bad idea, some surgeries are really fucked up
+        # radius = 450
+        # mask = utils.create_circular_mask(self.postop_arr.shape[0],self.postop_arr.shape[1],self.cochlea_center, radius)
+        # img = np.where(mask == 0, 0, img)
+
+        # create a CLAHE object (Arguments are optional).
+        # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        # img = clahe.apply(img)
+
+        # sharpen the image
+        # kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
+        # img = cv2.filter2D(img, -1, kernel)
+
+        # img = utils.normalize_2dimage_grayscale(img)
+
+        # img = np.where(img > 245,255,0).astype(np.uint8)
+
+        # img = cv2.threshold(img, 150, 255, cv2.THRESH_BINARY)[1]
+        # img = cv2.erode(img, None, iterations=2)
+        # img = cv2.dilate(img, None, iterations=2)
+
+        utils.show(img)
+
+        # imgd = np.hstack([img, self.postop_arr])
+        # utils.show(imgd)
+
+        # set the coordinate list instead of returning stuff
         return 8
 
     # TODO - make this mean something
@@ -338,3 +427,48 @@ class CTscanPair:
 
     # TODO - separate bright spots finder
     # https: // stackoverflow.com / questions / 51846933 / finding - bright - spots - in -a - image - using - opencv
+
+    # TODO - find orientation of the cochlea
+    def setCochleaOrientation(self):
+
+        pass
+
+    # todo - set cochlea area image
+    def setCochleaAreaImage(self):
+        center = self.cochlea_center
+        # TODO - same as in center detection -> need to be compacted if time allows it (I doubt it)
+        # Noise reduction
+        # Strong blur, very efficient (65, 65)
+        img_blur = cv2.blur(self.preop_arr, (config.cochlea_area["blur"],
+                                             config.cochlea_area["blur"]))
+
+        # Apply threshold for grey values
+        # Threshold chosen according to image histogram showing peak between 40 and 110 for grey
+        # values corresponding to liquid areas. (between 40 and 110)
+        img_threshold = np.where(np.logical_or(img_blur > config.cochlea_area["thr_up_gray"],
+                                               img_blur < config.cochlea_area["thr_low_gray"]),
+                                 0,
+                                 255).astype(np.uint8)
+
+        # Mask: circle around the center BOOLEAN (True/False)
+        radius_blue = config.cochlea_area["mask_radius"]
+        mask = utils.create_circular_mask(self.preImgRGB.shape[0], self.preImgRGB.shape[1], center, radius_blue)
+
+        # Logical and on the two masks to obtain the region shown in blue in the picture that
+        # corresponds to the cochlea. (liquid + matching radius
+        mask3 = np.logical_and(mask, img_threshold)
+        utils.show(mask3, "avant")
+
+        # As said in the handout, the electrodes might not be exactely in the cochlea area
+        # So we thicken it to have extend the borders of the mask.
+
+        kernel = np.ones((19, 19), np.uint8)
+        mask3 = cv2.dilate(np.float32(mask3), kernel, iterations=1)
+        # Convert back to
+        mask3 = mask3.astype(bool)
+
+        # Type: <class 'numpy.ndarray'>
+        # Shape: (746, 1129)
+        # dType: bool
+
+        return mask3

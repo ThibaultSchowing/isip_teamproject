@@ -8,6 +8,18 @@ import numpy as np
 import config
 
 
+def normalize_2dimage_grayscale(image):
+    """
+    Normalizes an image between 0 and 255
+    :param image:
+    :return:
+    """
+    # image = cv2.blur(image, (config.preprocessing_1["blur"], config.preprocessing_1["blur"]))
+    normalizedImg = np.zeros(image.shape)
+    normalizedImg = cv2.normalize(image, normalizedImg, 0, 255, cv2.NORM_MINMAX)
+    return normalizedImg
+
+
 # mainly just ideas and examples of useful functions to pre-process images
 def preprocess_image_grayscale(image, name="Preprocessed image"):
     """
@@ -64,6 +76,7 @@ def get_image_info(image, name="Image Info"):
     """
     print(name)
     print("Type: ", type(image))
+    print("Shape: ", image.shape)
     print("dType: ", image.dtype)
     print("Mean value: ", image.mean())
 

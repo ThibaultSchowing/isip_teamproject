@@ -23,5 +23,5 @@ c = Collection(imgs_pair_paths, pattern_path)
 # Todo clear main - export csv (from class Collection)
 ############
 for p in c.getPairs():
-    im = p.getCochleaCenter()
-    print(im)
+    center = p.getCochleaCenter()
+    print(center)
