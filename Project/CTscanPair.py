@@ -1,13 +1,10 @@
 import io
 import ntpath
-import os
 
 import cv2
 import imutils
 from PIL import Image
-from imutils import contours
 from pylab import *
-import imutils
 from skimage import measure
 
 import config
@@ -638,10 +635,20 @@ class CTscanPair:
             theta_fin = round(theta_fin)
 
             cv2.circle(image, (int(cX), int(cY)), 5, (255, 0, 0), 2)
-            #cv2.putText(image, "#{}: {},{}".format(el_number,cX,cY), (cX - 60, cY - 10), cv2.FONT_HERSHEY_PLAIN, 1.45,(255, 0, 0),2)
-            cv2.putText(image, "#{}: {}".format(el_number, theta_fin), (cX - 50, cY - 10), cv2.FONT_HERSHEY_PLAIN, 1.2,(255, 0, 0), 2)
+            # cv2.putText(image, "#{}: {},{}".format(el_number,cX,cY), (cX - 60, cY - 10), cv2.FONT_HERSHEY_PLAIN, 1.45,(255, 0, 0),2)
+            cv2.putText(image, "#{}: {}".format(el_number, theta_fin), (cX - 50, cY - 10), cv2.FONT_HERSHEY_PLAIN, 1.2,
+                        (255, 0, 0), 2)
 
         utils.show(image, name)
+
+        # Saving the image
+
+        if config.electrodes_enumeration["save_file"]:
+            print("saving file...")
+            path2 = './GEN_IMG/'
+            filename = "electrodes_" + self.name + ".png"
+            print("to path: ", path2 + filename)
+            cv2.imwrite(os.path.join(path2, filename), image)
 
         return 0
 

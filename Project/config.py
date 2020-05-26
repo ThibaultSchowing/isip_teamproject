@@ -71,7 +71,9 @@ electrodes_enumeration = {
     "max_angle": 115,
     # IMPORTANT: SHOW IMAGES OF DETECTED ELECTRODE BEFORE AND AFTER SORTING
     # AND NUMBERING.
-    "Show found electrodes on image?": False,
+    "Show found electrodes on image?": True,
     #
-    "Radius threshold": (0.59,1.5)
+    "Radius threshold": (0.59, 1.5),
+    # save image files, Show found electrodes has to be set to true too
+    "save_file": True
 }
