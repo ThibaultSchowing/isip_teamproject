@@ -4,10 +4,12 @@ import numpy as np
 # config for center detection with multi-scale pattern matching
 # function: setCochleaCenterTemplateMatching
 general = {
+    "Running on MacOS?": False,
     "data_directory": "./DATA",
     "save_imgs": "./GEN_IMG"
 }
 
+# Parameters for the function detecting the cochlea center
 pattern_matching_cochlea_center = {
     "pattern_path": "./pattern/round2.png",
     "blur": 65,
@@ -34,6 +36,7 @@ hough_circles_cochlea_center = {
     "verbose": False
 }
 
+# Used in various preprocessing functions to have a good contrast on the pre-surgery image.
 preprocessing_1 = {
     "blur": 65,
     "thr_low_gray": 40,
@@ -53,7 +56,8 @@ cochlea_area = {
 }
 
 set_electrode_coordinates = {
-    "show_img": True
+    "show_img": True,
+    "verbose": True
 }
 
 calculate_angular_insertion_depth = {
@@ -61,8 +65,13 @@ calculate_angular_insertion_depth = {
 }
 
 electrodes_enumeration = {
+    #
     "min_angle": 5,
+    #
     "max_angle": 115,
+    # IMPORTANT: SHOW IMAGES OF DETECTED ELECTRODE BEFORE AND AFTER SORTING
+    # AND NUMBERING.
     "Show found electrodes on image?": False,
+    #
     "Radius threshold": (0.59,1.5)
 }

@@ -30,6 +30,7 @@ class CTscanPair:
         ###########################################
         # Basic features initialization
         ###########################################
+
         start = time.time()
         self.prePath = pair[1]
         self.postPath = pair[0]
@@ -42,6 +43,10 @@ class CTscanPair:
         # Postop picture filename
         head, tail = ntpath.split(self.postPath)
         self.postBasename = tail
+        self.name = self.preBasename[:-7]
+
+        print("\n\n-------------------------------------")
+        print("Scan pair identification number: ", self.name)
 
         # Open the files
         # https://pillow.readthedocs.io/en/3.1.x/reference/Image.html#PIL.Image.Image.convert
@@ -96,7 +101,7 @@ class CTscanPair:
 
         end = time.time()
         t = end - start
-        message = " Done for pair " + self.preBasename[:-7] + " in " + str(round(t, 3)) + " seconds. "
+        message = "Done for pair " + self.preBasename[:-7] + " in " + str(round(t, 3)) + " seconds. " + "\n-------------------------------------"
         print(message)
 
 
@@ -384,6 +389,7 @@ class CTscanPair:
 
     def setElectrodesCoordinates(self):
 
+        verbose = config.set_electrode_coordinates["verbose"]
         # get post op image and invert intensity (ask Thibault, why the img is inverted in the first hand)
         img = self.postop_arr.copy()
         img = cv2.bitwise_not(img)
@@ -490,7 +496,8 @@ class CTscanPair:
                     continue
 
         # here you can check that the average electrode blob size is around 1500
-        print("mean blob size", np.mean(numPixel_l))
+        if verbose:
+            print("\nAverage electrode blob size: ", np.mean(numPixel_l))
 
         # find the contours in the mask
         blob_contour = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)

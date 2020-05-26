@@ -51,17 +51,22 @@ def preprocess_image_grayscale(image, name="Preprocessed image"):
     return dilated_image
 
 
-def get_img_pairs_paths(path=".\DATA"):
+def get_img_pairs_paths(path=config.general["data_directory"], sep="\\"):
     """
 
+    :param sep: this is the appropriate separator for creating a string of the paths of the CT scans.
     :param path: Path to the directory containing the data. Works according to the given structure. (not robust)
     :return: List of tuples containing the paths of the pre-surgery and post-surgery CT scans.
     """
     pairs = []
     for root, dirs, files in os.walk(path):
         pair = []
+
+        if config.general["Running on MacOS?"]:
+            sep = "/"
+
         for file in files:
-            pair.append(root + "\\" + file)
+            pair.append(root + sep + file)
         pairs.append(tuple(pair))
 
     # Removes the ./DATA entry
@@ -119,8 +124,6 @@ def create_circular_mask(h, w, center=None, radius=None):
 
     mask = dist_from_center <= radius
     return mask
-
-
 
 
 # https://www.oreilly.com/library/view/programming-computer-vision/9781449341916/ch01.html
