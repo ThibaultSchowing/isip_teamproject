@@ -1,6 +1,6 @@
 import io
 import ntpath
-
+import os
 import cv2
 import imutils
 from PIL import Image
@@ -384,6 +384,7 @@ class CTscanPair:
         # returns the coordinates of the center
         return cochlea_center
 
+    # TODO remove
     def setElectrodesCoordinates(self):
 
         verbose = config.set_electrode_coordinates["verbose"]
@@ -466,31 +467,33 @@ class CTscanPair:
 
             # check iter depth. If a blob is below 50 it loops over although it should be eroded away with time and
             # adding a break to the elif on line 431 doesnt
-            iter = 0
+            # check iter depth. If a blob is below 50 it loops over although it should be eroded away with time and
+            # adding a break to the elif on line 431 doesnt
+
 
             # if a blob exceeds 3000 we assume that it is a collection of 2 or more blobs
-            while numPixels > 3000 and iter != 5:
+            while numPixels > 3000:
                 # Activate this in case you want to see what happens also the utils.show() 3 lines lower
                 # utils.show(labelMask)
 
                 # erode the blob aggregate and recalculate blob size. If it is below 3000 it will make the cut and
-                labelMask1 = cv2.erode(labelMask, kernel_erode, iterations=16)
-                numPixels1 = cv2.countNonZero(labelMask1)
+                labelMask = cv2.erode(labelMask, kernel_erode, iterations=2)
+                numPixels = cv2.countNonZero(labelMask)
 
                 # see if blob aggregate is broken up after erosion
                 # utils.show(labelMask1)
 
-                # update counter
-                iter += 1
 
-                # included erorded blob
-                if numPixels1 > 50:
-                    numPixel_l.append(numPixels1)
-                    mask = cv2.add(mask, labelMask1)
+
+                # included erorded blob if within interval [50, 3000]
+                if numPixels > 50 and numPixels < 3000:
+                    numPixel_l.append(numPixels)
+                    mask = cv2.add(mask, labelMask)
                     break
-                # remove noise
-                elif numPixels < 50:
-                    continue
+                # if its too big or too small
+                else:
+                    numPixels = cv2.countNonZero(labelMask)
+                    pass
 
         # here you can check that the average electrode blob size is around 1500
         if verbose:
@@ -526,6 +529,171 @@ class CTscanPair:
             utils.show(img, name)
 
         # return list of coordinates
+        return all_coor
+
+    # Deprecated
+    def new_version_setElectrodesCoordinates(self):
+        """
+
+        :return: Same than previous version but performs worst at some point
+        """
+
+        # get post op image and invert intensity
+        img = self.postop_arr.copy()
+        img = cv2.bitwise_not(img)
+
+        ###############################################
+        # Setup SimpleBlobDetector parameters.
+        parameters = cv2.SimpleBlobDetector_Params()
+
+        # Change thresholds
+        parameters.minThreshold = 0
+        parameters.maxThreshold = 255
+
+        # Filter by Area.
+        parameters.filterByArea = True
+        parameters.minArea = 10
+
+        # Filter by Circularity
+        parameters.filterByCircularity = True
+        parameters.minCircularity = 0.1
+
+        # Filter by Convexity
+        parameters.filterByConvexity = False
+        parameters.minConvexity = 0.87
+
+        # Filter by Inertia
+        parameters.filterByInertia = False
+        parameters.minInertiaRatio = 0.01
+        ###############################################################
+
+        # create mask of the cochlea for normalization. The cochlea is the region that is of interest to us, so we use
+        # it to normalize the images. This region contains (most of the) electrodes as well as the background noise that
+        # surrounds them.
+        cochlea_mask = self.cochlea_area
+        normRegion = np.where(cochlea_mask == 0, cochlea_mask, img)
+
+        # Calculate mean and STD of normRegion for clipping and normalization
+        mean, SD = cv2.meanStdDev(normRegion)
+
+        # we clip the pixel values outside of the interval [mean-SD, mean+SD]
+        clipped = np.clip(img, mean - 2 * SD, mean + 2 * SD).astype(np.uint8)
+
+        # Normalize the image
+        mean_cl, SD_cl = cv2.meanStdDev(clipped)
+        img_norm = cv2.normalize(clipped, clipped, mean_cl, 255, norm_type=cv2.NORM_MINMAX)
+
+        # Gaussian blurring to reduce high frequency noise
+        blurred_img = cv2.GaussianBlur(img_norm, (41, 41), 0)
+
+        # Extract statistics of the normalized image
+        min_img, max_img = np.amin(blurred_img), np.amax(blurred_img)
+        mean_img, SD_img = cv2.meanStdDev(blurred_img)
+
+        # thresholding of the images and conversion to a binary image
+        # 3SD away from max value of image (= 255) seems reasonable
+        thresh_img1 = cv2.threshold(blurred_img, max_img - 2.9 * SD_img, 255, cv2.THRESH_BINARY)[1]
+
+        # The next key step is to make the shape of the electrodes more clear. Need to flip the invert image again
+        # otherwise eroded and dilate are all backwards... I could not flip at the beginning and redo the normalization
+        # and take the lowest values but I m too lazy
+        thresh_img1 = cv2.bitwise_not(thresh_img1)
+
+        # create a nice ellipsoid kernel since we have round shape.
+        kernel_erode = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+
+        # erode reduces noise around blobs. Makes the blobs smaller and more defined, especially when two are connected
+        eroded_img = cv2.erode(thresh_img1, kernel_erode, iterations=3)
+
+        # cv2.dilate increases the size of the blob, yield more defined dots
+        dilated_img = cv2.dilate(eroded_img, kernel_erode, iterations=4)
+
+        # The next is to perform a Connected-component labeling, which subsets connected components and labels them.
+        dilated_img = np.where(cochlea_mask == 0, cochlea_mask, dilated_img)
+        labels = measure.label(dilated_img, background=0)
+        mask = np.zeros(eroded_img.shape, dtype="uint8")
+
+        # utils.show(dilated_img)
+        # store number of pixels per blob >> only used to find good limits for blob selection.
+        numPixel_l = []
+
+        # loop over all unique blobs that have been found
+        for label in np.unique(labels):
+
+            # Ignore the background label. Background = 0
+            if label == 0:
+                continue
+
+            # Create mask and set labeled area "blob" to 255
+            labelMask = np.zeros(eroded_img.shape, dtype="uint8")
+            labelMask[labels == label] = 255
+
+            # calculate numPixels
+            numPixels = cv2.countNonZero(labelMask)
+
+            # A normal electrode blob consists of around 1500 pixels on average. A weak blob should be at least 50, rest
+            # is noise. These limits are based on empirical evidence we got from our image set. Would be greater to have
+            # more to find more accurate values.
+            if numPixels > 50 and numPixels < 3000:
+                numPixel_l.append(numPixels)
+                mask = cv2.add(mask, labelMask)
+
+            # check iter depth. If a blob is below 50 it loops over although it should be eroded away with time and
+            # adding a break to the elif on line 431 doesnt
+            iter = 0
+
+            # if a blob exceeds 3000 we assume that it is a collection of 2 or more blobs
+            while numPixels > 3000 and iter != 100:
+                # Activate this in case you want to see what happens also the utils.show() 3 lines lower
+                # utils.show(labelMask)
+
+                # erode the blob aggregate and recalculate blob size. If it is below 3000 it will make the cut and
+                labelMask = cv2.erode(labelMask, kernel_erode, iterations=2)
+                numPixels = cv2.countNonZero(labelMask)
+
+                # see if blob aggregate is broken up after erosion
+                # utils.show(labelMask1)
+
+                # update counter
+                iter += 1
+
+                # included erorded blob if within interval [50, 3000]
+                if numPixels > 50 and numPixels < 3000:
+                    numPixel_l.append(numPixels)
+                    mask = cv2.add(mask, labelMask)
+                    break
+                # if its too big or too small
+                else:
+                    numPixels = cv2.countNonZero(labelMask)
+                    pass
+
+        # here you can check that the average electrode blob size is around 1500
+        print("mean blob size", np.mean(numPixel_l))
+
+        mask = cv2.bitwise_not(mask)
+
+        # check version of cv2 to load blob detector correctly
+        if cv2.__version__.startswith('2.'):
+            detector = cv2.SimpleBlobDetector(parameters)
+        else:
+            detector = cv2.SimpleBlobDetector_create(parameters)
+
+        # detect the blobs
+        blobs = detector.detect(mask)
+
+        # draw red circles > np.array = temporary output array. Here its BGR not RGB
+        drawBlobs = cv2.drawKeypoints(img, blobs, np.array([]), (255, 0, 0),
+                                      cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+
+        all_coor = []
+        # find the coordinates of the blobs
+        for blob in blobs:
+            cx = blob.pt[0]
+            cy = blob.pt[1]
+            all_coor.append((round(cx), round(cy)))
+
+        utils.show(drawBlobs)
+
         return all_coor
 
     # TODO - Tobias Part!! comment functions
@@ -646,7 +814,7 @@ class CTscanPair:
         if config.electrodes_enumeration["save_file"]:
             print("saving file...")
             path2 = './GEN_IMG/'
-            filename = "electrodes_" + self.name + ".png"
+            filename = "1st_electrodes_" + self.name + ".png"
             print("to path: ", path2 + filename)
             cv2.imwrite(os.path.join(path2, filename), image)
 
