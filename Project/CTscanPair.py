@@ -5,7 +5,10 @@ import os
 import cv2
 import imutils
 from PIL import Image
+from imutils import contours
 from pylab import *
+import imutils
+from skimage import measure
 
 import config
 import utils
@@ -59,24 +62,44 @@ class CTscanPair:
         self.preImgRGB = None
 
         ###########################################
-        # Complex analysis on init
+        # Complex analysis and definitions on init
         ###########################################
 
-        # Define a radius of reasonable location of the cochlea (see hand out: electrode might not be in)
 
         # Has been attempted with Hough Transform but template matching is more efficient and adaptive.
         self.cochlea_center = self.setCochleaCenterTemplateMatching()
 
+        # Define a radius of reasonable location of the cochlea (see hand out: electrode might not be in)
         # Mask that covers the cochlea area. It is expanded a bit to be used in the electrodes detection.
         self.cochlea_area = self.setCochleaAreaImage()
-        # self.electrodes_list = self.setElectrodesCoordinates()
 
+        # Get coordinates of the electrodes. A list of x and y coordinates (tuples) pinpointing to the center of the
+        # electrode.
+        self.electrodes_list = self.setElectrodesCoordinates()
+
+        # Determine if the found spots are relevant --> 12 electrodes should be found! Not too far away
+        self.relevant_electodes = self.setElectrodesSorted()
+
+        # Determine the orientation of the cochlea
         self.orientation = self.setCochleaOrientation()
+
+        # Define the order of the electrodes
+        self.electrode_order = self.setElectrodesOrder()
+
+        # Calculate the angular insertion depth --> The main output!
+        # [(electrode nr., x-cord., y-cord., angular insertion depth),...]
+        self.angular_insertion_depth = self.setAngularInsertionDepth()
+
+        # If wanted, found electrodes can be visualized
+        if config.electrodes_enumeration["Show found electrodes on image?"]:
+            self.enumerateElectrodes()
 
         end = time.time()
         t = end - start
         message = " Done for pair " + self.preBasename[:-7] + " in " + str(round(t, 3)) + " seconds. "
         print(message)
+
+
 
     def getPreImg(self):
         """
@@ -98,6 +121,30 @@ class CTscanPair:
         :return: Coordinates (x,y) of the cochleal center
         """
         return self.cochlea_center
+
+    def getElectrodesCoordinates(self):
+        """
+
+        :return: Cordinates of (x,y) of detected electrodes
+        """
+        return self.electrodes_list
+
+    def getCochleaOrientation(self):
+        """
+
+        :return: Returns the orientation of the cochlea in the provided image.
+        """
+        return self.orientation
+
+    def getElectrodesSorted(self):
+        """
+
+        :return:
+        """
+        return self.relevant_electodes
+
+    def getAngularInsertionDepth(self):
+        return self.angular_insertion_depth
 
     # HOUGH IS NOT USED
     def setCochleaCenterHoughTransform(self):
@@ -254,8 +301,8 @@ class CTscanPair:
         cv2.circle(image, cochlea_center, 8, 0, 2)
 
         if verbose:
-            title = "Best match for " + self.preBasename
-            utils.show(image, title)
+            title_ = "Best match for " + self.preBasename
+            utils.show(image, title_)
 
         # Saving the image
         if save_file:
@@ -335,104 +382,261 @@ class CTscanPair:
         # returns the coordinates of the center
         return cochlea_center
 
-    # TODO - this is just bullshit
     def setElectrodesCoordinates(self):
-        #
+
+        # get post op image and invert intensity (ask Thibault, why the img is inverted in the first hand)
         img = self.postop_arr.copy()
+        img = cv2.bitwise_not(img)
 
-        # increase contrast
-        normalizedImg = np.zeros(img.shape)
-        normalizedImg = cv2.normalize(img, normalizedImg, 0, 255, cv2.NORM_MINMAX)
-        img = normalizedImg
+        # create mask of the cochlea for normalization. The cochlea is the region that is of interest to us, so we use
+        # it to normalize the images. This region contains (most of the) electrodes as well as the background noise that
+        # surrounds them.
+        cochlea_mask = self.cochlea_area
+        normRegion = np.where(cochlea_mask == 0, cochlea_mask, img)
 
-        # global thresholding
-        ret1, th1 = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY)
-        # Otsu's thresholding
-        ret2, th2 = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        # Otsu's thresholding after Gaussian filtering
-        blur = cv2.GaussianBlur(img, (5, 5), 6)
-        ret3, th3 = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        # Calculate mean and STD of normRegion for clipping and normalization
+        mean, SD = cv2.meanStdDev(normRegion)
 
-        # plot all the images and their histograms
-        images = [img, 0, th1,
-                  img, 0, th2,
-                  blur, 0, th3]
-        titles = ['Original Noisy Image', 'Histogram', 'Global Thresholding (v=127)',
-                  'Original Noisy Image', 'Histogram', "Otsu's Thresholding",
-                  'Gaussian filtered Image', 'Histogram', "Otsu's Thresholding"]
-        for i in range(3):
-            plt.subplot(3, 3, i * 3 + 1), plt.imshow(images[i * 3], 'gray')
-            plt.title(titles[i * 3]), plt.xticks([]), plt.yticks([])
-            plt.subplot(3, 3, i * 3 + 2), plt.hist(images[i * 3].ravel(), 256)
-            plt.title(titles[i * 3 + 1]), plt.xticks([]), plt.yticks([])
-            plt.subplot(3, 3, i * 3 + 3), plt.imshow(images[i * 3 + 2], 'gray')
-            plt.title(titles[i * 3 + 2]), plt.xticks([]), plt.yticks([])
-        plt.show()
+        # we clip the pixel values outside of the interval [mean-SD, mean+SD]
+        clipped = np.clip(img, mean - 2 * SD, mean + 2 * SD).astype(np.uint8)
 
-        # threshold
-        # utils.get_image_info(img)
-        # ret, img = cv2.threshold(img, 100, 255, cv2.THRESH_TOZERO)
+        # Normalize the image
+        mean_cl, SD_cl = cv2.meanStdDev(clipped)
+        img_norm = cv2.normalize(clipped, clipped, mean_cl, 255, norm_type=cv2.NORM_MINMAX)
 
-        # findcontours
-        # img = cv2.findContours(img, cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)[-2]
+        # Gaussian blurring to reduce high frequency noise
+        blurred_img = cv2.GaussianBlur(img_norm, (41, 41), 0)
 
-        # create a CLAHE object (Arguments are optional).
-        # clahe = cv2.createCLAHE(clipLimit=0.5, tileGridSize=(4, 4))
-        # img = clahe.apply(img)
+        # Extract statistics of the normalized image
+        min_img, max_img = np.amin(blurred_img), np.amax(blurred_img)
+        mean_img, SD_img = cv2.meanStdDev(blurred_img)
 
-        # Normalizer
+        # this might be overkill.. Here I set all values that are 2 SDs aways from the minimum to 0 (high pass fitlering)
+        # blurred_img = np.where(blurred_img < min_img + 2*SD_img, 0, blurred_img)
 
-        # increase contrast
-        # normalizedImg = np.zeros(img.shape)
-        # normalizedImg = cv2.normalize(img, normalizedImg, 0, 255, cv2.NORM_MINMAX)
-        # img = normalizedImg
+        # thresholding of the images and conversion to a binary image
+        # 3SD away from max value of image (= 255) seems reasonable
+        thresh_img1 = cv2.threshold(blurred_img, max_img - 3 * SD_img, 255, cv2.THRESH_BINARY)[1]
 
-        # Equalizers
-        # https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_histograms/py_histogram_equalization/py_histogram_equalization.html
+        # The next key step is to make the shape of the electrodes more clear. Need to flip the invert image again
+        # otherwise eroded and dilate are all backwards... I could not flip at the beginning and redo the normalization
+        # and take the lowest values but I m too lazy
+        thresh_img1 = cv2.bitwise_not(thresh_img1)
 
-        # img = cv2.equalizeHist(img)
+        # create a nice ellipsoid kernel since we have round shape.
+        kernel_erode = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
 
-        # Bad idea, some surgeries are really fucked up
-        # radius = 450
-        # mask = utils.create_circular_mask(self.postop_arr.shape[0],self.postop_arr.shape[1],self.cochlea_center, radius)
-        # img = np.where(mask == 0, 0, img)
+        # erode reduces noise around blobs. Makes the blobs smaller and more defined, especially when two are connected
+        eroded_img = cv2.erode(thresh_img1, kernel_erode, iterations=3)
 
-        # create a CLAHE object (Arguments are optional).
-        # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        # img = clahe.apply(img)
+        # cv2.dilate increases the size of the blob, yield more defined dots
+        dilated_img = cv2.dilate(eroded_img, kernel_erode, iterations=2)
 
-        # sharpen the image
-        # kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
-        # img = cv2.filter2D(img, -1, kernel)
+        # The next is to perform a Connected-component labeling, which subsets connected components and labels them.
+        dilated_img = np.where(cochlea_mask == 0, cochlea_mask, dilated_img)
+        labels = measure.label(dilated_img, background=0)
+        mask = np.zeros(eroded_img.shape, dtype="uint8")
 
-        # img = utils.normalize_2dimage_grayscale(img)
+        # store number of pixels per blob >> only used to find good limits for blob selection.
+        numPixel_l = []
 
-        # img = np.where(img > 245,255,0).astype(np.uint8)
+        # loop over all unique blobs that have been found
+        for label in np.unique(labels):
 
-        # img = cv2.threshold(img, 150, 255, cv2.THRESH_BINARY)[1]
-        # img = cv2.erode(img, None, iterations=2)
-        # img = cv2.dilate(img, None, iterations=2)
+            # Ignore the background label. Background = 0
+            if label == 0:
+                continue
 
-        utils.show(img)
+            # Create mask and set labeled area "blob" to 255
+            labelMask = np.zeros(eroded_img.shape, dtype="uint8")
+            labelMask[labels == label] = 255
 
-        # imgd = np.hstack([img, self.postop_arr])
-        # utils.show(imgd)
+            # calculate numPixels
+            numPixels = cv2.countNonZero(labelMask)
 
-        # set the coordinate list instead of returning stuff
-        return 8
+            # A normal electrode blob consists of around 1500 pixels on average. A weak blob should be at least 50, rest
+            # is noise. These limits are based on empirical evidence we got from our image set. Would be greater to have
+            # more to find more accurate values.
+            if numPixels > 50 and numPixels < 3000:
+                numPixel_l.append(numPixels)
+                mask = cv2.add(mask, labelMask)
 
-    # TODO - make this mean something
-    def setElectrodesOrder(self):
+            # check iter depth. If a blob is below 50 it loops over although it should be eroded away with time and
+            # adding a break to the elif on line 431 doesnt
+            iter = 0
 
-        return 8
+            # if a blob exceeds 3000 we assume that it is a collection of 2 or more blobs
+            while numPixels > 3000 and iter != 5:
+                # Activate this in case you want to see what happens also the utils.show() 3 lines lower
+                # utils.show(labelMask)
 
-    # TODO - separate bright spots finder
-    # https: // stackoverflow.com / questions / 51846933 / finding - bright - spots - in -a - image - using - opencv
+                # erode the blob aggregate and recalculate blob size. If it is below 3000 it will make the cut and
+                labelMask1 = cv2.erode(labelMask, kernel_erode, iterations=16)
+                numPixels1 = cv2.countNonZero(labelMask1)
 
-    # TODO - find orientation of the cochlea
+                # see if blob aggregate is broken up after erosion
+                # utils.show(labelMask1)
+
+                # update counter
+                iter += 1
+
+                # included erorded blob
+                if numPixels1 > 50:
+                    numPixel_l.append(numPixels1)
+                    mask = cv2.add(mask, labelMask1)
+                    break
+                # remove noise
+                elif numPixels < 50:
+                    continue
+
+        # here you can check that the average electrode blob size is around 1500
+        print("mean blob size", np.mean(numPixel_l))
+
+        # find the contours in the mask
+        blob_contour = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        blob_contour = imutils.grab_contours(blob_contour)
+
+        # empty list to collect coordinates
+        all_coor = []
+
+        # add center coordinate
+        center = self.cochlea_center
+        cv2.circle(img, (int(center[0]), int(center[1])), 2, (0, 0, 0), 2)
+
+
+        # loop over the contours
+        for (i, c) in enumerate(blob_contour):
+            # Highlight the potential electrode with a circle. Radius is not used..
+            ((cX, cY), radius) = cv2.minEnclosingCircle(c)
+            all_coor.append((round(cX),round(cY)))
+
+            # third argument = circle size, last argument = border thickness
+            cv2.circle(img, (int(cX), int(cY)), 5, (255, 255, 255), 4)
+
+        # Summary / Update
+        print("\n{} potential electrodes have been found in {} \n".format(len(all_coor), self.preBasename[:-7]))
+
+        # Show Image?
+        if config.electrodes_enumeration["Show found electrodes on image?"]:
+            name = self.postBasename + "/  processing"
+            utils.show(img, name)
+
+        # return list of coordinates
+        return all_coor
+
+    # TODO - Tobias Part!! comment functions
+
+    def setElectrodesSorted(self):
+        """
+
+        :return: list of tuples containing electrodes' (radius, angle, x, y)
+        """
+        center = self.cochlea_center
+        points = self.electrodes_list
+
+        ## TRANSFORM INTO POLAR FORM WITH FUNCTION polar()
+        ## CREATE A LIST OF TUPLES WITH radius,angle,x,y
+        sorting = [utils.polar(center, point) + point for point in points]
+
+        ## SORT POINTS BY RADIUS (max to min) // TUPLE SORTING WITH KEY: LAMBDA
+        sorted_angles = sorted(sorting, key=lambda tup: (-tup[0], tup[1]))
+
+        ## IF MORE THAN 12 ELECTRODES ARE DETECTED, THE ONE'S FARTHEST AWAY ARE REMOVED (Less likely to be a hit)
+        if len(points) > 12:
+            sorted_angles = sorted_angles[len(points) - 12:]
+
+        ## IF LESS ELECTRODES ARE FOUND, EMPTY SLOTS ARE ADDED SO THAT THE CORRECT ITERATION IS KEEP!
+        ## ONE ADDITIONAL ITERATION IS ADDED TO FLUSH THE BUFFER AT THE END.
+
+        if len(points) < 12:
+            sorted_angles += [(0, 0, 0, 0)] * (12 - len(points))
+
+        # sorted_angles = sorted(sorted_angles, reverse=True, key=lambda tup: tup[0])
+        # print("SORTED ANGLES", len(sorted_angles), "\n", sorted_angles)
+
+        return sorted_angles
+
     def setCochleaOrientation(self):
+        """
+        Check the rotation of spiral, given the coordinates of the furthest detected electrode.
+        If this electrode is left and below of the center --> CLOCKWISE (returns 1)
+        If the electrode is right and below the center --> COUNTER-CLOCKWISE (return -1)
 
-        pass
+        :return: None, if the detected electrode is above the center!
+        """
+        r_, theta_min, x_, y_ = self.relevant_electodes[0]
+        CW = None
+
+        if 180 > theta_min > 90:
+            CW = 1
+        elif 0 < theta_min <= 90:
+            CW = -1
+        elif CW is None:
+            print("setCholeaOrientation failed!")
+            print("Check if the center point and the first electrode are correctly identified")
+
+        # print("CLOCKWISE", CW, "\n")
+        return CW
+
+    def setElectrodesOrder(self):
+        electrodes = self.relevant_electodes
+        CW = self.getCochleaOrientation()
+
+        if CW is None:
+            return 0
+
+        electrodes_order = utils.electrode_sequence(CW, electrodes)
+        # print("ORDER", len(electrodes_order), "\n", electrodes_order)
+        return electrodes_order
+
+    def setAngularInsertionDepth(self):
+        """
+        Returns the angular insertion depth for the detected electrodes in the proposed order (for the excel
+        file.
+        :return: List of tuples (electrode_i, x_cord, y_cord,theta_i)
+        """
+        sorted_electrodes = self.electrode_order
+        CW = self.getCochleaOrientation()
+
+        if CW is None:
+            return 0
+
+        # sorted_electrodes = sorted(sorted_electrodes, reverse=True, key=lambda tup: tup[0])
+        ang_ins_depth = utils.calculate_angular_insertion_depth(sorted_electrodes, CW)
+        # print("CORRECT SEQUENCE (electrode_i, x_cord, y_cord,theta_i):", len(ang_ins_depth), "\n", ang_ins_depth)
+
+        return ang_ins_depth
+
+    def enumerateElectrodes(self):
+        """
+        Show the output image with the electrodes annotated and the angular insertion depth shown.
+        :return: nada
+        """
+        ang_ins_depth = self.getAngularInsertionDepth()
+        image = self.getPostImg()
+        image = cv2.bitwise_not(image)
+        CW = self.getCochleaOrientation()
+        name = self.postBasename
+        center = self.cochlea_center
+
+        if CW is None:
+            return 0
+
+        cv2.circle(image,(int(center[0]),int(center[1])),2, (0, 0, 0), 2)
+        for (i, c) in enumerate(ang_ins_depth):
+            (el_number, cX, cY, theta_fin) = c
+
+            # draw the bright spot on the image
+            cX, cY = round(cX), round(cY)
+            theta_fin = round(theta_fin)
+
+            cv2.circle(image, (int(cX), int(cY)), 5, (255, 0, 0), 2)
+            #cv2.putText(image, "#{}: {},{}".format(el_number,cX,cY), (cX - 60, cY - 10), cv2.FONT_HERSHEY_PLAIN, 1.45,(255, 0, 0),2)
+            cv2.putText(image, "#{}: {}".format(el_number, theta_fin), (cX - 50, cY - 10), cv2.FONT_HERSHEY_PLAIN, 1.2,(255, 0, 0), 2)
+
+        utils.show(image, name)
+
+        return 0
 
     # todo - set cochlea area image
     def setCochleaAreaImage(self):

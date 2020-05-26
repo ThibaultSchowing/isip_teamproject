@@ -43,11 +43,26 @@ preprocessing_1 = {
 }
 
 cochlea_area = {
-    "save_file": False,
+    "save_file": True,
     "blur": 65,
     "thr_low_gray": 40,
     "thr_up_gray": 110,
     "mask_radius": 250,
     "dilate_kernel": 25,
     "iterations": 5
+}
+
+set_electrode_coordinates = {
+    "show_img": True
+}
+
+calculate_angular_insertion_depth = {
+    "verbose": False
+}
+
+electrodes_enumeration = {
+    "min_angle": 5,
+    "max_angle": 115,
+    "Show found electrodes on image?": False,
+    "Radius threshold": (0.59,1.5)
 }

@@ -1,4 +1,5 @@
 from CTscanPair import CTscanPair
+import csv
 
 
 # This class contains all the pairs of CT scans (CTscanPair objects)
@@ -34,18 +35,68 @@ class Collection:
         '''
         return self.CTpairs
 
-    def getInfosCSV(self):
+    def getInfosCSV(self, filename="collection.csv", verbose=True):
         '''
 
         :return: Formated content from all the CT scan pairs in CSV
         '''
         # Todo getter for informations
 
-        values = [["Scan ID", "Center Coord",
-                   "sigma_1", "sigma_2", "sigma_3", "sigma_4", "sigma_5", "sigma_6", "sigma_7", "sigma_8", "sigma_9", "sigma_10", "sigma_11", "sigma_12"]]
+        # E# are just the electrode number followed by their informations.
+        colnames = ["Scan ID", "Center Coord",
+                    "E1", "x_1", "y_1", "sigma_1",
+                    "E2", "x_2", "y_2", "sigma_2",
+                    "E3", "x_3", "y_3", "sigma_3",
+                    "E4", "x_4", "y_4", "sigma_4",
+                    "E5", "x_5", "y_5", "sigma_5",
+                    "E6", "x_6", "y_6", "sigma_6",
+                    "E7", "x_7", "y_7", "sigma_7",
+                    "E8", "x_8", "y_8", "sigma_8",
+                    "E9", "x_9", "y_9", "sigma_9",
+                    "E10", "x_10", "y_10", "sigma_10",
+                    "E11", "x_11", "y_11", "sigma_11",
+                    "E12", "x_12", "y_12", "sigma_12"]
 
         # for each pair: get every info and process them
         # Use CTscanPair getters to retreive the infos
+        # Write information in a csv file
 
+        with open('angular_insertion_depths.csv', 'w', newline='') as f:
+
+            writer = csv.writer(f)
+            writer.writerow(colnames)
+
+            for p in self.CTpairs:
+                aid = p.getAngularInsertionDepth()[::-1]  # reverse the list
+                center = p.getCochleaCenter()
+                name = p.preBasename[:-7]
+
+                # AS THE NON DETECTED ELECTRODES ARE ALWAYS THE FIRST (FROM CENTER)
+                # WE HERE COMPLETE THE LISTS WITH "-1" VALUES
+                patch = [(i+1, -1, -1, -1) for i in range(0, (12 - len(aid)))]
+                patch += aid
+
+                #print(patch)
+
+
+                # Add to a row each element of each electrode
+                row = [name, center]
+                for electrode in patch:
+                    for element in electrode:
+                        row.append(element)
+
+                writer.writerow(row)
+
+
+                if verbose:
+                    print("#############################################")
+                    print("Image ", name)
+                    print("#############################################")
+                    print("Center: ", center)
+                    print("Electrodes: ")
+                    for e in patch:
+                        print(e)
+                    print("_____________________________________________")
+                    print("\n\n\n")
 
         return None
