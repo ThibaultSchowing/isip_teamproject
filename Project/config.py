@@ -22,7 +22,7 @@ pattern_matching_cochlea_center = {
     "verbose": False,
     "show_plot": False,
     "image_scaling": np.linspace(0.2, 1.0, 20)[::-1],
-    "mask_radius": 250
+    "mask_radius": 450
 }
 
 # Parameters for the hough approach to the cochlea center detection
@@ -56,7 +56,7 @@ cochlea_area = {
 }
 
 set_electrode_coordinates = {
-    "show_img": True,
+    "show_img": False,
     "verbose": True
 }
 
@@ -68,12 +68,12 @@ electrodes_enumeration = {
     # Check if the next electrode blob is between those two angles
     "min_angle": 5,
     #
-    "max_angle": 115,
+    "max_angle": 90,
     # IMPORTANT: SHOW IMAGES OF DETECTED ELECTRODE BEFORE AND AFTER SORTING
     # AND NUMBERING.
     "Show found electrodes on image?": False,
     #
     "Radius threshold": (0.59, 1.5),
     # save image files, Show found electrodes has to be set to true too
-    "save_file": False
+    "save_file": True
 }

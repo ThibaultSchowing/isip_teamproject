@@ -1,5 +1,6 @@
-from CTscanPair import CTscanPair
 import csv
+
+from CTscanPair import CTscanPair
 
 
 # This class contains all the pairs of CT scans (CTscanPair objects)
@@ -38,9 +39,9 @@ class Collection:
     def getInfosCSV(self, filename="collection.csv", verbose=True):
         '''
 
-        :return: Formated content from all the CT scan pairs in CSV
+        :return: None but write Formated content from all the CT scan pairs in CSV files. One is formated
+        with one "patient" per row, the other wone is grouped by patient in table format (for the hand-in)
         '''
-        # Todo getter for informations
 
         # E# are just the electrode number followed by their informations.
         colnames = ["Scan ID", "Center Coord",
@@ -73,20 +74,13 @@ class Collection:
 
                 # AS THE NON DETECTED ELECTRODES ARE ALWAYS THE FIRST (FROM CENTER)
                 # WE HERE COMPLETE THE LISTS WITH "-1" VALUES
-                patch = [(i+1, -1, -1, -1) for i in range(0, (12 - len(aid)))]
+                patch = [(i + 1, -1, -1, -1) for i in range(0, (12 - len(aid)))]
                 patch += aid
-
-                #print(patch)
-
-
                 # Add to a row each element of each electrode
                 row = [name, center]
                 for electrode in patch:
                     for element in electrode:
                         row.append(element)
-
-                writer.writerow(row)
-
 
                 if verbose:
                     print("#############################################")
@@ -98,5 +92,23 @@ class Collection:
                         print(e)
                     print("_____________________________________________")
                     print("\n\n\n")
+                writer.writerow(row)
+
+        # Again but with a more friendly format
+        with open('formated_per_pair_AID.csv', 'w', newline='') as g:
+            writer = csv.writer(g)
+            writer.writerow(["ID", "x", "y", "sigma"])
+
+            for p in self.CTpairs:
+                aid = p.getAngularInsertionDepth()[::-1]  # reverse the list
+                center = p.getCochleaCenter()
+                name = p.name
+
+                patch = [(i + 1, -1, -1, -1) for i in range(0, (12 - len(aid)))]
+                patch += aid
+
+                writer.writerow([name, "", ""])
+                for electricityCanBeDangerous in patch:
+                    writer.writerow([applesauce for applesauce in electricityCanBeDangerous])
 
         return None

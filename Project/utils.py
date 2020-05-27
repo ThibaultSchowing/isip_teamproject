@@ -1,11 +1,11 @@
+import math
 import os
 import os.path
+import sys
 
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-import math
-import sys
 
 import config
 
@@ -161,9 +161,9 @@ def electrode_sequence(CW, sorted_angles):
     This function determines the correct sequence of how the electrodes are assembled in the spiral shape, when
     the spiral is unwound.
     :param CW: This determines whether the spiral is turned clockwise CW = 1 or counter-clockwise CW = -1.
-    :param sorted_angles: It takes a list of tuples (radius, angle) off all electrodes. The list is (initially) sorted
+    :param sorted_angles: It takes a list of tuples (radius, angle, x, y) off all electrodes. The list is sorted
     by the length of radius (--> tup[0]).
-    :return: returns the correct sequence of the electrodes as a list with tuple (radius, angle).
+    :return: returns the correct sequence of the electrodes as a list with tuple (radius, angle, x, y).
     """
     ## THE SEQUENCE IS WHERE THE CORRECT ORDER IS BUILT, WHILE THE BUFFER LIST HOLDS THE ELECTRODES UNTIL THEY ARE
     ## THE BEST FIT FOR THE NEXT ELECTRODE IN THE SEQUENCE.
@@ -172,14 +172,23 @@ def electrode_sequence(CW, sorted_angles):
     max_angle, min_angle = config.electrodes_enumeration["max_angle"], config.electrodes_enumeration["min_angle"]
     r_thresh = config.electrodes_enumeration["Radius threshold"]
 
-    ## THE OUTERMOST ELECTRODE
+    ## THE OUTERMOST ELECTRODE --> immediately added
     r_1, theta_1, x_1, y_1 = sorted_angles.pop(0)
-
     sequence.append((r_1, theta_1, x_1, y_1))
 
     for i in range(len(set_sorted_angles) - 1):
         r_i, theta_i, x_i, y_i = set_sorted_angles[i + 1]
-        # print("VALUE %s\n" % str(i + 2), r_i, theta_i, x_i, " ", y_i, sep="\t")
+
+        if max_angle >= CW * (theta_1 - theta_i) >= min_angle and r_thresh[1] * r_1 >= r_i >= r_thresh[0] * r_1 \
+                or -(360 - min_angle) < CW * (theta_1 - theta_i) < -(360 - max_angle) and r_thresh[1] * r_1 > r_i > \
+                r_thresh[0] * r_1:
+            sorted_angles.pop(0)
+            sequence.append((r_i, theta_i, x_i, y_i))
+            r_1, theta_1, x_1, y_1 = r_i, theta_i, x_i, y_i
+        else:
+            if r_i != -1000 or theta_i != -1000 or x_i != -1000 or y_i != -1000:
+                buffer.append((r_i, theta_i, x_i, y_i))
+                buffer.sort(reverse=False, key=lambda tup: tup[1])
 
         ## CHECK BUFFER FOR MATCH:
         Loop = True
@@ -187,51 +196,23 @@ def electrode_sequence(CW, sorted_angles):
         if len(buffer) > 0:
             while Loop:
                 for j in range(len(buffer)):
-
-                    if len(buffer) == 0 or len(buffer) >= j+k:
+                    if len(buffer) == 0 or len(buffer) >= j + k:
                         Loop = False
-
                     r_j, theta_j, x_j, y_j = buffer[j - k]
-                    # print("B CHECK:", max_angle > CW * (theta_1 - theta_j) > min_angle, r_thresh[1] * r_1 > r_j >
-                    # r_thresh[0] * r_1, -(360 - min_angle) < CW * (theta_1 - theta_j) < -(360 - max_angle),
-                    # r_thresh[1] * r_1 > r_j > r_thresh[0] * r_1)
 
                     if max_angle > CW * (theta_1 - theta_j) > min_angle and r_thresh[1] * r_1 > r_j > r_thresh[0] * r_1 \
                             or -(360 - min_angle) < CW * (theta_1 - theta_j) < -(360 - max_angle) \
                             and r_thresh[1] * r_1 > r_j > r_thresh[0] * r_1:
                         del buffer[j - k]
                         k += 1
-                        l += 1
+                        l += len(buffer)
                         sequence.append((r_j, theta_j, x_j, y_j))
                         r_1, theta_1, x_1, y_1 = r_j, theta_j, x_j, y_j
-
                     if l == 0:
                         Loop = False
-                # print("l",l, len(buffer))
                 if l <= 0 or len(buffer) == 0:
                     Loop = False
-
                 l -= 1
-
-        # print("S CHECK: ", 60 >= CW * (theta_1 - theta_i) >= 0,r_thresh[1] * r_1 >= r_i >= r_thresh[0] * r_1,
-        # 180 < CW * (theta_1 - theta_i) <= 270,r_thresh[1] * r_1 > r_i > r_thresh[0] * r_1)
-        if (x_i, y_i) == (0, 0):
-            continue
-        elif 60 >= CW * (theta_1 - theta_i) >= 0 and r_thresh[1] * r_1 >= r_i >= r_thresh[0] * r_1 \
-                or 180 < CW * (theta_1 - theta_i) <= 270 and r_thresh[1] * r_1 > r_i > r_thresh[0] * r_1:
-            # print("added Value {} to seq".format(i + 2))
-            sorted_angles.pop(0)
-            sequence.append((r_i, theta_i, x_i, y_i))
-            r_1, theta_1, x_1, y_1 = r_i, theta_i, x_i, y_i
-        else:
-            # print("added Value {} to buffer".format(i + 2))
-            buffer.append((r_i, theta_i, x_i, y_i))
-            buffer.sort(reverse=False, key=lambda tup: tup[1])
-
-    # print("Value before\n", r_1, theta_1, x_1, y_1, sep="\t")
-    # print("SEQ", len(sequence), "\n", sequence)
-
-    # print("BUFFER:", len(buffer), "\n", buffer)
     return sequence
 
 
