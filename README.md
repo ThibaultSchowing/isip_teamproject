@@ -21,11 +21,14 @@ Content of this repository:
 
 * **Papers**: Contains different publication of interest
 
-* **Project**: Contain the Python project, including the virtual environment, the data, the patterns (images for pattern matching) and of course the results (csv output and GEN_IMG for generated images).
+* **Project**: Contain the Python project, including the virtual environment, the data, the patterns (images for pattern matching) and of course the results (csv outputs and GEN_IMG for generated images).
 
    **Note:** the file **config.py** is configured so that the program gives a minimum output. You can change this and many other parameters in there.
-   To run the programm, run **main.py**. It will produce an output (console + csv) of the data that should be in the */DATA/* folder
+   To run the programm, run **main.py**. It will produce an output (console + csv) of the data. The original data should be stored in the */DATA/* folder.
 
-* **Report**: Contains the report in PDF format
-* **Handout**: Contains the instructions and teams compositions.
+* **Handout**: Contains the instructions and teams composition.
+
+* Report in pdf format
+
+* Results Excel sheet 
 

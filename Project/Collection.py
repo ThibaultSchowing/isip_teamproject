@@ -62,7 +62,7 @@ class Collection:
         # Use CTscanPair getters to retreive the infos
         # Write information in a csv file
 
-        with open('angular_insertion_depths.csv', 'w', newline='') as f:
+        with open('outputs/angular_insertion_depths.csv', 'w', newline='') as f:
 
             writer = csv.writer(f)
             writer.writerow(colnames)
@@ -95,7 +95,7 @@ class Collection:
                 writer.writerow(row)
 
         # Again but with a more friendly format
-        with open('formated_per_pair_AID.csv', 'w', newline='') as g:
+        with open('outputs/formated_per_pair_subject.csv', 'w', newline='') as g:
             writer = csv.writer(g)
             writer.writerow(["ID", "x", "y", "sigma"])
 
