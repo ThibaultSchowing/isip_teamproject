@@ -57,7 +57,8 @@ cochlea_area = {
 
 set_electrode_coordinates = {
     "show_img": False,
-    "verbose": True
+    "verbose": True,
+    "Save Found Electrode File": True
 }
 
 calculate_angular_insertion_depth = {
@@ -71,7 +72,7 @@ electrodes_enumeration = {
     "max_angle": 90,
     # IMPORTANT: SHOW IMAGES OF DETECTED ELECTRODE BEFORE AND AFTER SORTING
     # AND NUMBERING.
-    "Show found electrodes on image?": False,
+    "Show found electrodes on image?": True,
     #
     "Radius threshold": (0.59, 1.5),
     # save image files, Show found electrodes has to be set to true too
